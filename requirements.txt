@@ -1,4 +1,0 @@
-sphinx
-pandas
-numpy
-matplotlib

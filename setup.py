@@ -9,6 +9,10 @@ with open('README.rst') as f:
 with open('LICENSE') as f:
     license = f.read()
 
+with open('REQUIREMENTS') as f:
+    requirements = f.read()
+
+
 setup(
     name='mice',
     version='1.0.0',
@@ -18,5 +22,6 @@ setup(
     author_email='agcarlon@gmail.com',
     url='https://bitbucket.org/agcarlon',
     license=license,
+    install_requires=requirements,
     packages=find_packages(exclude=('tests', 'docs'))
 )

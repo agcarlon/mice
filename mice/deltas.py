@@ -1,5 +1,4 @@
 import numpy as np
-from IPython.core.debugger import set_trace
 
 
 class Delta:
@@ -33,15 +32,16 @@ class Delta:
             m_to_samp = np.ceil(m - self.m).astype('int')
             samples = self.sampler(m_to_samp)
             if len(self.x_l1) == 0:
-                self.f_delta = np.vstack([self.f_delta, mice.grad(self.x_l, samples)])
-                mice.counter += self.c*m_to_samp
+                self.f_delta = np.vstack(
+                    [self.f_delta, mice.grad(self.x_l, samples)])
+                mice.counter += self.c * m_to_samp
                 self.v_batch = mice.var(self.f_delta)
             else:
                 new_f_l = mice.grad(self.x_l, samples)
                 new_f_delta = new_f_l - mice.grad(self.x_l1, samples)
                 self.f_l = np.vstack([self.f_l, new_f_l])
                 self.f_delta = np.vstack([self.f_delta, new_f_delta])
-                mice.counter += self.c*m_to_samp
+                mice.counter += self.c * m_to_samp
                 self.v_batch = mice.var(self.f_l)
             self.v_l = mice.var(self.f_delta)
             self.f_delta_av = mice.aggr(self.f_delta)
@@ -102,21 +102,21 @@ class LightDelta:
             if self.c == 1:
                 new_values = mice.grad(self.x_l, samples)
                 self.f_delta_av, self.m2_del = new_update(
-                        self.m, self.f_delta_av, self.m2_del, new_values)
+                    self.m, self.f_delta_av, self.m2_del, new_values)
                 self.m += m_to_samp
-                mice.counter += self.c*m_to_samp
-                self.v_batch = self.m2_del/(self.m - 1)
+                mice.counter += self.c * m_to_samp
+                self.v_batch = self.m2_del / (self.m - 1)
             else:
                 new_f_ls = mice.grad(self.x_l, samples)
                 new_f_l1s = mice.grad(self.x_l1, samples)
                 self.f_l, self.m2_l = new_update(
-                        self.m, self.f_l, self.m2_l, new_f_ls)
+                    self.m, self.f_l, self.m2_l, new_f_ls)
                 self.f_delta_av, self.m2_del = new_update(
                     self.m, self.f_delta_av, self.m2_del, new_f_ls - new_f_l1s)
                 self.m += m_to_samp
-                mice.counter += self.c*m_to_samp
-                self.v_batch = self.m2_l/(self.m - 1)
-            self.v_l = self.m2_del/(self.m - 1)
+                mice.counter += self.c * m_to_samp
+                self.v_batch = self.m2_l / (self.m - 1)
+            self.v_l = self.m2_del / (self.m - 1)
         return
 
     def restart(self, mice):
@@ -179,25 +179,27 @@ class DeltaResampling:
             if self.c == 1:
                 new_values = mice.grad(self.x_l, samples)
                 self.f_delta_av, self.m2_del = new_update(
-                        self.m, self.f_delta_av, self.m2_del, new_values)
+                    self.m, self.f_delta_av, self.m2_del, new_values)
                 ms = np.arange(self.m, self.m + m_to_samp)
                 idxs = ms % self.re_part
                 for idx in range(self.re_part):
                     mask = ~(idxs == idx)
                     m_ = self.f_ms[idx]
                     m_new = mask.sum()
-                    self.f_deltas[idx] = (self.f_deltas[idx]*m_ + np.sum(new_values[mask], axis=0))/(m_ + m_new)
+                    self.f_deltas[idx] = (
+                        self.f_deltas[idx] * m_
+                        + np.sum(new_values[mask], axis=0)) / (m_ + m_new)
                     self.f_ms[idx] += m_new
                 self.m += m_to_samp
-                mice.counter += self.c*m_to_samp
-                self.v_batch = self.m2_del/(self.m - 1)
+                mice.counter += self.c * m_to_samp
+                self.v_batch = self.m2_del / (self.m - 1)
                 self.f_l = self.f_delta_av
                 self.f_ls = self.f_deltas
             else:
                 new_f_ls = mice.grad(self.x_l, samples)
                 new_f_l1s = mice.grad(self.x_l1, samples)
                 self.f_l, self.m2_l = new_update(
-                        self.m, self.f_l, self.m2_l, new_f_ls)
+                    self.m, self.f_l, self.m2_l, new_f_ls)
                 new_f_deltas = new_f_ls - new_f_l1s
                 self.f_delta_av, self.m2_del = new_update(
                     self.m, self.f_delta_av, self.m2_del, new_f_deltas)
@@ -207,13 +209,17 @@ class DeltaResampling:
                     mask = ~(idxs == idx)
                     m_ = self.f_ms[idx]
                     m_new = mask.sum()
-                    self.f_deltas[idx] = (self.f_deltas[idx]*m_ + np.sum(new_f_deltas[mask], axis=0))/(m_ + m_new)
-                    self.f_ls[idx] = (self.f_ls[idx]*m_ + np.sum(new_f_ls[mask], axis=0))/(m_ + m_new)
+                    self.f_deltas[idx] = (
+                        self.f_deltas[idx] * m_
+                        + np.sum(new_f_deltas[mask], axis=0)) / (m_ + m_new)
+                    self.f_ls[idx] = (
+                        self.f_ls[idx] * m_
+                        + np.sum(new_f_ls[mask], axis=0)) / (m_ + m_new)
                     self.f_ms[idx] += m_new
                 self.m += m_to_samp
-                mice.counter += self.c*m_to_samp
-                self.v_batch = self.m2_l/(self.m - 1)
-            self.v_l = self.m2_del/(self.m - 1)
+                mice.counter += self.c * m_to_samp
+                self.v_batch = self.m2_l / (self.m - 1)
+            self.v_l = self.m2_del / (self.m - 1)
         return
 
     def restart(self, mice):
@@ -241,10 +247,11 @@ class DeltaResampling:
 
 
 def new_update(count, mean, M2, newValues):
-    counts = np.arange(count+1, count+len(newValues)+1)
+    counts = np.arange(count + 1, count + len(newValues) + 1)
     size = (len(newValues[0]), 1)
-    D_mean = (mean*count + np.cumsum(newValues, axis=0))/np.tile(counts, size).T
+    D_mean = (mean * count + np.cumsum(newValues, axis=0)) / \
+        np.tile(counts, size).T
     # D_m = np.vstack(mean, D_mean)
-    factors = np.divide(counts, (counts-1), where=(counts > 1))
-    M2 += ((np.linalg.norm(newValues-D_mean, axis=1))**2*factors).sum()
+    factors = np.divide(counts, (counts - 1), where=(counts > 1))
+    M2 += ((np.linalg.norm(newValues - D_mean, axis=1))**2 * factors).sum()
     return D_mean[-1], M2

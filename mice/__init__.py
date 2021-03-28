@@ -1,1 +1,1 @@
-from .mice import mice
+from .mice import MICE
