@@ -73,14 +73,14 @@ class MICE:
                  m_min=10,
                  rest_m_factor=10,
                  max_cost=1000,
-                 drop_param=0,
+                 drop_param=0.5,
                  restart_param=0,
                  max_hierarchy_size=1000,
                  mice_type='resampling',
                  verbose=False,
-                 re_part=2,
+                 re_part=5,
                  re_percentile=0.05,
-                 re_tot_cost=0.01,
+                 re_tot_cost=0.2,
                  re_min_n=5,
                  re_max_samp=1000,
                  big_batch=False,
@@ -102,6 +102,11 @@ class MICE:
         self.norm = np.linalg.norm
         self.var = lambda x: np.sum(np.var(x, axis=0, ddof=1))
         self.max_hierarchy_size = max_hierarchy_size
+        self.verbose = verbose
+        if verbose:
+            self.print = print
+        else:
+            self.print = lambda x: None
         self.deltas = []
         self.dim = None
         self.counter = 0
@@ -162,11 +167,6 @@ class MICE:
             self.clip_hierarchy = self.clip_hierarchy_all
         elif clip_type is None:
             self.clip_hierarchy = lambda opt_ml: opt_ml
-        self.verbose = verbose
-        if verbose:
-            self.print = print
-        else:
-            self.print = lambda x: None
 
     def __call__(self, x):
         return self.evaluate(x)
