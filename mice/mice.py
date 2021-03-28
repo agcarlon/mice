@@ -1,0 +1,517 @@
+import numpy as np
+import pandas as pd
+from deltas import Delta, LightDelta, DeltaResampling
+from functools import partial
+from copy import deepcopy
+# from itertools import cycle
+from time import time
+# from numba import jit
+
+from IPython.core.debugger import set_trace
+
+
+class Estimator:
+    """Class for MICE estimator objects
+
+    :param grad: a gradient to be estimated
+    :param sampler: a function with argument n that returns a sample of size n
+    :param eps: the admissible relative error in grad estimate
+    :param dropping: defines whether or not to use dropping (Boolean)
+    """
+
+    def __init__(self,
+                 grad,
+                 sampler,
+                 eps=1.0,
+                 m_min=10,
+                 rest_m_factor=10,
+                 max_cost=1000,
+                 dropping=True,
+                 drop_param=0,
+                 restart=True,
+                 restart_param=0,
+                 finite=False,
+                 adpt=True,
+                 max_hierarchy_size=1000,
+                 sum=partial(np.sum, axis=0),
+                 aggr=partial(np.mean, axis=0),
+                 inner=np.dot,
+                 norm=np.linalg.norm,
+                 var=lambda x: np.sum(np.var(x, axis=0, ddof=1)),
+                 verbose=False,
+                 re_part=2,
+                 re_percentile=0.05,
+                 re_max_samp=1000,
+                 re_tot_cost=0.01,
+                 re_min_n=5,
+                 big_batch=False,
+                 mice_type='resampling',
+                 clip_type='full'):
+        self.grad = partial(self.time_grads, func=grad)
+        self.sampler = sampler
+        self.eps = eps
+        self.m_min = m_min
+        self.m_rest_min = rest_m_factor*m_min
+        self.max_cost = max_cost
+        self.dropping = dropping
+        self.drop_param = drop_param
+        self.restart = restart
+        self.restart_param = restart_param
+        self.finite = isinstance(sampler, list)
+        self.sum = sum
+        self.aggr = aggr
+        self.inner = inner
+        self.norm = norm
+        self.var = var
+        self.max_hierarchy_size = max_hierarchy_size
+        self.verbose = verbose
+        self.deltas = []
+        self.dim = None
+        self.counter = 0
+        self.log = []
+        self.k = 0
+        self.times = {
+            'gradients': 0.,
+            'aggregation': 0.,
+            'resampling': 0.,
+            'clipping': 0.,
+            'mice': 0.
+        }
+        self.aggregations = 0
+        self.aggr_cost = 0
+        self.adpt = adpt
+        self.force_exit = False
+        self.force_restart = False
+        self.mice_type = mice_type
+        if self.mice_type == 'naive':
+            self.delta_class = Delta
+        elif self.mice_type == 'light':
+            self.delta_class = LightDelta
+        elif self.mice_type == 'resampling':
+            self.delta_class = partial(DeltaResampling, re_part=re_part,
+                                       m_min=m_min)
+        if self.mice_type == 'resampling':
+            self.resamples = 0
+            self.err_tol = 1e-6
+            self.re_part = re_part
+            self.re_percentile = re_percentile
+            self.re_max_samp = re_max_samp
+            self.re_tot_cost = re_tot_cost
+            self.re_cost = 1.
+            self.re_min_n = re_min_n
+            self.define_tol = self.define_tol_norm_resampling
+        else:
+            self.err_tol = .0
+            self.define_tol = self.define_tol_norm
+        if finite:
+            self.datasize = len(sampler)
+            self.m_rest_min = np.minimum(self.m_rest_min, self.datasize)
+            self.create_delta = self.create_delta_finite
+            if big_batch:
+                self.opt_ml = self.opt_ml_finite_bigbatch
+            else:
+                self.opt_ml = self.opt_ml_finite
+        else:
+            if sampler is False:
+                raise Exception('If not on the finite sum case, a sampler must'
+                                ' be provided.')
+            self.create_delta = self.create_delta_cont
+            self.opt_ml = self.opt_ml_cont
+        if clip_type == 'full':
+            self.clip_hierarchy = self.clip_hierarchy_full
+        elif clip_type == 'all':
+            self.clip_hierarchy = self.clip_hierarchy_all
+        elif clip_type is None:
+            self.clip_hierarchy = lambda opt_ml: opt_ml
+
+    def time_grads(self, x, thetas, func):
+        t0 = time()
+        out = func(x, thetas)
+        self.times['gradients'] += time() - t0
+        return out
+
+    def evaluate(self, x):
+        """Evaluates grad at x using MICE with dropping and restart
+
+        :param x: where to evaluate grad
+        :returns: gradient at x
+        """
+        t0 = time()
+        if self.verbose:
+            print(f'Evaluating MICE')
+        if self.check_max_cost(extra_eval=self.m_min):
+            return np.full(self.dim, np.nan)
+        if len(self.deltas) == 0:
+            self.deltas.append(self.create_delta(x, c=1))
+            self.deltas[0].m_min = self.m_rest_min
+            self.log.append(['start'])
+            self.dim = len(x)
+        else:
+            self.deltas.append(self.create_delta(
+                x, c=2, x_l1=self.deltas[-1].x_l))
+            self.log.append(['MICE'])
+        self.deltas[-1].update_delta(self, self.deltas[-1].m_min)
+        self.err_tol = self.define_tol()
+        opt_ml = self.opt_ml(self.deltas)
+        if self.dropping and len(self.deltas) > 2:
+            opt_ml = self.try_to_drop(opt_ml)
+        if len(self.deltas) > 1 and self.restart:
+            opt_ml = self.try_to_restart(opt_ml)
+        opt_ml = self.clip_hierarchy(opt_ml)
+        while not self.check_samp_sizes(opt_ml):
+            for delta, m_opt in zip(self.deltas, opt_ml):
+                if self.finite:
+                    m_min = np.minimum(delta.m_min, self.datasize - delta.m)
+                else:
+                    m_min = delta.m_min
+                m_to_sample = np.minimum(m_opt - delta.m, delta.m)
+                if m_to_sample > 0:
+                    m_to_sample = np.maximum(m_to_sample, m_min)
+                if self.check_max_cost(extra_eval=m_to_sample):
+                    return np.full(self.dim, np.nan)
+                delta.update_delta(self, delta.m+m_to_sample)
+            self.err_tol = self.define_tol()
+            opt_ml = self.opt_ml(self.deltas)
+        f_estim = self.aggr_deltas()
+        self.log[-1] += [self.counter, self.deltas[-1].v_l]
+        self.times['mice'] += time() - t0
+        self.k += 1
+        return f_estim
+
+    def clip_hierarchy_full(self, opt_ml):
+        if self.finite:
+            t0 = time()
+            m_is_datasize = np.where(opt_ml == self.datasize)[0]
+            if len(m_is_datasize) and m_is_datasize.max() > 0:
+                lvl_clip = m_is_datasize.max()
+                ml = np.array([delta.m for delta in self.deltas])
+                cost = np.maximum(opt_ml - ml, 0).sum() + self.aggr_cost*len(ml)
+                deltas_clip = self.deltas[lvl_clip:]
+                opt_ml_clip = self.opt_ml(deltas_clip)
+                cost_clip = (np.maximum(opt_ml_clip - ml[lvl_clip:], 0).sum()
+                             + self.aggr_cost*len(opt_ml_clip))
+                if cost_clip <= cost:
+                    if self.verbose:
+                        print(f'Clipping at l:{lvl_clip}'
+                              f'clip cost:{cost_clip}, '
+                              f'continuing cost: {cost}')
+                    self.deltas = deltas_clip
+                    self.deltas[0] = self.deltas[0].restart(self)
+                    opt_ml = opt_ml_clip
+            self.times['clipping'] += time() - t0
+        return opt_ml
+
+    def clip_hierarchy_all(self, opt_ml):
+        t0 = time()
+        ml = np.array([delta.m for delta in self.deltas])
+        cost = np.maximum(opt_ml - ml, 0).sum() + self.aggr_cost*len(ml)
+        cost_clip = []
+        opt_ml_clip = []
+        for i in range(len(self.deltas)):
+            deltas_clip = self.deltas[i:]
+            opt_ml_clip.append(self.opt_ml(deltas_clip))
+            cost_clip.append(np.maximum(opt_ml_clip[-1] - ml[i:], 0).sum()
+                             + self.aggr_cost*len(opt_ml_clip[-1]))
+        if np.min(cost_clip) < cost:
+            i = np.argmin(cost_clip)
+            self.deltas = self.deltas[i:]
+            self.deltas[0] = self.deltas[0].restart(self)
+            opt_ml = opt_ml_clip[i]
+            if self.verbose:
+                print(f'Clipping at l:{i}, '
+                      f'clip cost:{cost_clip[i]}, '
+                      f'continuing cost: {cost}')
+        self.times['clipping'] += time() - t0
+        return opt_ml
+
+    def try_to_restart(self, opt_ml):
+        """restarts MICE if less expensive than continuing
+
+        :param opt_ml: list of optimum M for each l
+        :returns: updated list of optimum M
+        """
+        ml = [delta.m for delta in self.deltas]
+        mice_cost = np.maximum(0, np.ceil(opt_ml-ml)).sum() \
+            + self.aggr_cost*len(opt_ml)
+        new_delta = self.deltas[-1].restart(self)
+        opt_ml_restart = self.opt_ml([new_delta])
+        opt_ml_restart = np.maximum(opt_ml_restart, self.m_rest_min)
+        restart_cost = np.maximum(0, opt_ml_restart - ml[-1]) + self.aggr_cost
+        if (restart_cost < mice_cost*(1+self.restart_param)
+                or len(self.deltas) > self.max_hierarchy_size
+                or self.force_restart):
+            self.force_restart = False
+            self.log[-1] = ['restart']
+            if self.verbose:
+                print(
+                    f'restart: Yes, Cost to continue:{mice_cost}, '
+                    f'restart cost:{restart_cost}')
+            self.deltas = [new_delta]
+            return np.array(opt_ml_restart)
+        else:
+            if self.verbose:
+                print(
+                    f'restart: No, Cost to continue:{mice_cost}, '
+                    f'restart cost:{restart_cost}')
+            return opt_ml
+
+    def try_to_drop(self, opt_ml):
+        """Drops last support point if it minimizes work
+
+        :param opt_ml: list of optimum M for each l
+        :returns: updated list of optimum M for each l
+        """
+        ml = [delta.m for delta in self.deltas]
+        mice_cost = np.maximum(0, np.ceil(opt_ml-ml)).sum() \
+            + self.aggr_cost*len(opt_ml)
+        delta_drop = self.create_delta(
+            self.deltas[-1].x_l, c=2, x_l1=self.deltas[-3].x_l)
+        delta_drop.update_delta(self, self.m_min)
+        opt_ml_drop = self.opt_ml(self.deltas[:-2]+[delta_drop])
+        drop_cost = np.maximum(0, np.ceil(
+            opt_ml_drop-(ml[:-2]+[ml[-1]]))).sum() \
+            + self.aggr_cost*len(opt_ml_drop)
+        if drop_cost <= mice_cost*(1 + self.drop_param):
+            self.log[-2][0] = 'dropped'
+            if self.verbose:
+                print(
+                    f'Drop: Yes, Cost to continue:{mice_cost}, '
+                    f'dropping cost:{drop_cost}')
+            self.deltas = self.deltas[:-2]+[delta_drop]
+            return opt_ml_drop
+        else:
+            if self.verbose:
+                print(
+                    f'Drop: No, Cost to continue:{mice_cost}, '
+                    f'dropping cost:{drop_cost}')
+            return opt_ml
+
+    def create_delta_cont(self, x, c=2, x_l1=[]):
+        delta_sampler = deepcopy(self.sampler)
+        return self.delta_class(x=x, sampler=delta_sampler, c=c, x_l1=x_l1)
+
+    def create_delta_finite(self, x, c=2, x_l1=[]):
+        start = np.random.randint(self.datasize)
+        sample_idx = sample_gen(start, self.datasize)
+        delta_sampler = partial(sampler_finite,
+                                sample_iterator=sample_idx,
+                                sample=self.sampler)
+        return self.delta_class(x=x, sampler=delta_sampler, c=c, x_l1=x_l1)
+
+    def check_max_cost(self, extra_eval=0):
+        if self.counter + extra_eval > self.max_cost:
+            self.force_exit = True
+            self.log[-1] = ['end', self.counter, None]
+            self.log = pd.DataFrame(self.log,
+                                    columns=['event', 'num_grads', 'vl'])
+            return True
+        else:
+            return False
+
+    def check_samp_sizes(self, opt_ml):
+        """Checks if sample-sizes are enough to achieve eps or if counter
+        exceeds max_cost
+
+
+        :returns: True if eps satisfied (Boolean)
+        """
+        ml = [delta.m for delta in self.deltas]
+        return all(opt_ml <= ml)
+                # or (self.counter > self.max_cost))
+
+    def aggr_deltas(self):
+        """Evaluates a grad estimate at x from deltas
+
+        :returns: estimate of grad evaluated at x
+        """
+        t0 = time()
+        sum = self.sum([delta.f_delta_av for delta in self.deltas])
+        self.times['aggregation'] += time() - t0
+        self.aggregations += len(self.deltas)
+        self.aggr_cost = ((self.times['aggregation']/self.aggregations)
+                          / (self.times['gradients']/self.counter))*self.adpt
+        return sum
+
+    def define_tol_norm(self):
+        """Calculate admissible standard deviation in grad estimate from
+        the norm of grad.
+
+        :returns: eps (positive real scalar)
+        """
+        f_estim = self.aggr_deltas()
+        return self.eps*self.norm(f_estim)
+
+    def define_tol_norm_resampling(self):
+        """Calculate admissible standard deviation in grad estimate from
+        the norm of grad.
+
+        :returns: eps (positive real scalar)
+        """
+        t0 = time()
+        ml = [delta.m for delta in self.deltas]
+        opt_ml = self.opt_ml(self.deltas)
+        cost = np.maximum(opt_ml - ml, 0).sum()
+        if self.adpt:
+            re_samp = int(self.re_tot_cost*cost/(self.re_cost*len(self.deltas)))
+        else:
+            re_samp = self.re_max_samp
+        re_samp = np.min([re_samp, self.re_max_samp,
+                         (2*self.re_part)**len(self.deltas)])
+        n = np.max([re_samp, self.re_min_n])
+        samples = np.random.randint(self.re_part, size=(int(n), len(self.deltas)))
+
+        estims = np.vstack(self.deltas[0].f_deltas[samples[:, 0]])
+        for delta, samples_ in zip(self.deltas[1:], samples[:, 1:].T):
+            estims += delta.f_deltas[samples_]
+        norms = np.linalg.norm(estims, axis=1)
+        norms = np.append(norms, self.norm(self.aggr_deltas()))
+
+        self.times['resampling'] += time() - t0
+        self.resamples += n
+        self.re_cost = ((self.times['resampling']/self.resamples)
+                        / (self.times['gradients']/self.counter))
+        norms = np.sort(norms)
+        self.norm_estim = norms[int(np.floor((n+1)*self.re_percentile))]
+        return self.eps*self.norm_estim
+
+    def opt_ml_finite(self, deltas):
+        """Evaluates the optimal M for each level l
+
+        :param deltas: list of objects from class Delta
+        :returns: 1-D numpy array with the sample sizes
+        """
+        ds = self.datasize
+
+        vl, ml, cl = [deltas[0].v_batch], [deltas[0].m], [1]
+        m_min = [self.m_rest_min]
+        for delta in deltas[1:]:
+            vl.append(delta.v_l)
+            ml.append(delta.m)
+            cl.append(delta.c)
+            m_min.append(self.m_min)
+
+        vl = np.array(vl)
+        ml = np.array(ml)
+        cl = np.array(cl)
+
+        opt_ml = np.array(m_min).astype('int')
+        ells = ml < ds
+
+        while np.sum([vl/opt_ml*(1-opt_ml/ds)]) > self.err_tol**2:
+            aux1 = self.err_tol**2 + 1/(self.datasize-1)*np.sum(vl[ells])
+            aux2 = np.sum(np.sqrt(np.multiply(vl[ells], cl[ells]))) * \
+                self.datasize/(self.datasize-1)
+            opt_ml[ells] = np.ceil(np.divide(vl[ells], cl[ells])**0.5*aux2
+                                   / aux1).astype('int')
+            opt_ml = np.minimum(opt_ml, self.datasize)
+            opt_ml = np.maximum(opt_ml, ml)
+            opt_ml = np.maximum(opt_ml, m_min)
+            ells = opt_ml < ds
+        return opt_ml
+
+    def opt_ml_finite_bigbatch(self, deltas):
+        """Evaluates the optimal M for each level l
+
+        :param deltas: list of objects from class Delta
+        :returns: 1-D numpy array with the sample sizes
+        """
+        if len(deltas) == 1:
+            return np.array([self.datasize])
+        else:
+            ds = self.datasize
+            vl, ml, cl = [deltas[0].v_batch], [deltas[0].m], [1]
+            for delta in deltas[1:]:
+                vl.append(delta.v_l)
+                ml.append(delta.m)
+                cl.append(delta.c)
+
+            vl = np.array(vl)
+            ml = np.array(ml)
+            cl = np.array(cl)
+
+            opt_ml = np.asarray(ml)
+            ells = opt_ml < ds
+
+            while np.sum([vl/opt_ml*(1-opt_ml/ds)]) > self.err_tol**2:
+                aux1 = self.err_tol**2 + 1/(self.datasize-1)*np.sum(vl[ells])
+                aux2 = np.sum(np.sqrt(np.multiply(vl[ells], cl[ells]))) * \
+                    self.datasize/(self.datasize-1)
+                opt_ml[ells] = np.ceil(np.divide(vl[ells], cl[ells])**0.5*aux2
+                                       / aux1).astype('int')
+                opt_ml = np.minimum(opt_ml, self.datasize)
+                ells = opt_ml < ds
+        return opt_ml
+
+    def opt_ml_cont(self, deltas):
+        """Evaluates the optimal M for each level l
+
+        :param deltas: list of objects from class Delta
+        :returns: 1-D numpy array with the sample sizes
+        """
+        vl, ml, cl = [deltas[0].v_batch], [deltas[0].m], [1]
+        m_min = [self.m_rest_min]
+        for delta in deltas[1:]:
+            vl.append(delta.v_l)
+            ml.append(delta.m)
+            cl.append(delta.c)
+            m_min.append(self.m_min)
+        sum = np.sum(np.sqrt(np.multiply(vl, cl)))
+        opt_ml = np.ceil(self.err_tol**(-2)*np.divide(vl, cl)**0.5*sum).astype('int')
+
+        # set_trace()
+        opt_ml = np.maximum(opt_ml, m_min)
+        if self.verbose:
+            print(f'Optimal Ml: {opt_ml}')
+        return opt_ml
+
+
+def sample_gen(start, datasize):
+    i = start
+    while True:
+        if i == datasize-1:
+            i = 0
+            yield i
+        else:
+            i += 1
+            yield i
+
+
+def sampler_finite(n, sample_iterator, sample):
+    return [sample[sample_idx] for i, sample_idx in zip(range(n), sample_iterator)]
+
+
+def plot_mice(data,
+              ax,
+              x,
+              y,
+              style='loglog',
+              markers=True,
+              legend=True,
+              color='C0'):
+    start = data[data['event'] == 'start']
+    MICEs = data[data['event'] == 'MICE']
+    dropped = data[data['event'] == 'dropped']
+    restarts = data[data['event'] == 'restart']
+    end = data[data['event'] == 'end']
+
+    drop = dropped.size > 0
+    plot_style = {
+        'loglog': ax.loglog,
+        'semilogy': ax.semilogy,
+        'semilogx': ax.semilogx,
+        'plot': ax.plot
+    }
+    plot_func = plot_style[style]
+    plots = []
+    plots += [plot_func(data[x], data[y], color=color)]
+    if markers:
+        plots += [plot_func(start[x], start[y], 'bs', ms=5, label='Start')]
+        plots += [plot_func(MICEs[x], MICEs[y], 'go', ms=3, label='MICE')]
+        if drop:
+            plots += [plot_func(dropped[x], dropped[y], 'kx', ms=3, label='Dropped')]
+        plots += [plot_func(restarts[x], restarts[y], 'rs', ms=5, label='Restart')]
+        plots += [plot_func(end[x], end[y], 's', color='purple', ms=5, label='End')]
+    if legend and markers:
+        # ax.legend(plots[1:])
+        ax.legend()
+    return ax
