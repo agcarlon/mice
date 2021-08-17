@@ -146,14 +146,14 @@ class MICE:
             self.err_tol = .0
             self.define_tol = self.define_tol_norm
         if self.finite:
-            self.datasize = len(sampler)
-            self.m_rest_min = np.minimum(self.m_rest_min, self.datasize)
+            self.data_size = len(sampler)
+            self.m_rest_min = np.minimum(self.m_rest_min, self.data_size)
             self.create_delta = self.create_delta_finite
             if big_batch:
                 self.opt_ml = self.opt_ml_finite_bigbatch
             else:
                 self.opt_ml = self.opt_ml_finite
-            self.print(f'Finite case: size{self.datasize}')
+            self.print(f'Finite case: size{self.data_size}')
         else:
             if sampler is False:
                 raise Exception('If not on the finite sum case, a sampler must'
@@ -170,6 +170,12 @@ class MICE:
 
     def __call__(self, x):
         return self.evaluate(x)
+
+    def __getattr__(self, item):
+        if item == 'sample_sizes':
+            return [delta.m for delta in self.deltas]
+        else:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{item}'")
 
     def grad_check(self, x, thetas, func):
         t0 = time()
@@ -218,7 +224,7 @@ class MICE:
         while not self.check_samp_sizes(opt_ml):
             for delta, m_opt in zip(self.deltas, opt_ml):
                 if self.finite:
-                    m_min = np.minimum(delta.m_min, self.datasize - delta.m)
+                    m_min = np.minimum(delta.m_min, self.data_size - delta.m)
                 else:
                     m_min = delta.m_min
                 m_to_sample = np.minimum(m_opt - delta.m, delta.m)
@@ -238,7 +244,7 @@ class MICE:
     def clip_hierarchy_full(self, opt_ml):
         if self.finite:
             t0 = time()
-            m_is_datasize = np.where(opt_ml == self.datasize)[0]
+            m_is_datasize = np.where(opt_ml == self.data_size)[0]
             if len(m_is_datasize) and m_is_datasize.max() > 0:
                 lvl_clip = m_is_datasize.max()
                 ml = np.array([delta.m for delta in self.deltas])
@@ -333,8 +339,8 @@ class MICE:
         return self.delta_class(x=x, sampler=delta_sampler, c=c, x_l1=x_l1)
 
     def create_delta_finite(self, x, c=2, x_l1=[]):
-        start = np.random.randint(self.datasize)
-        sample_idx = sample_gen(start, self.datasize)
+        start = np.random.randint(self.data_size)
+        sample_idx = sample_gen(start, self.data_size)
         delta_sampler = partial(sampler_finite,
                                 sample_iterator=sample_idx,
                                 sample=self.sampler)
@@ -400,7 +406,7 @@ class MICE:
         return self.eps * self.norm_estim
 
     def opt_ml_finite(self, deltas):
-        ds = self.datasize
+        ds = self.data_size
 
         vl, ml, cl = [deltas[0].v_batch], [deltas[0].m], [1]
         m_min = [self.m_rest_min]
@@ -418,12 +424,12 @@ class MICE:
         ells = ml < ds
 
         while np.sum([vl / opt_ml * (1 - opt_ml / ds)]) > self.err_tol**2:
-            aux1 = self.err_tol**2 + 1 / (self.datasize - 1) * np.sum(vl[ells])
+            aux1 = self.err_tol ** 2 + 1 / (self.data_size - 1) * np.sum(vl[ells])
             aux2 = np.sum(np.sqrt(np.multiply(vl[ells], cl[ells]))) * \
-                self.datasize / (self.datasize - 1)
+                   self.data_size / (self.data_size - 1)
             opt_ml[ells] = np.ceil(np.divide(vl[ells], cl[ells])**0.5 * aux2
                                    / aux1).astype('int')
-            opt_ml = np.minimum(opt_ml, self.datasize)
+            opt_ml = np.minimum(opt_ml, self.data_size)
             opt_ml = np.maximum(opt_ml, ml)
             opt_ml = np.maximum(opt_ml, m_min)
             ells = opt_ml < ds
@@ -431,9 +437,9 @@ class MICE:
 
     def opt_ml_finite_bigbatch(self, deltas):
         if len(deltas) == 1:
-            return np.array([self.datasize])
+            return np.array([self.data_size])
         else:
-            ds = self.datasize
+            ds = self.data_size
             vl, ml, cl = [deltas[0].v_batch], [deltas[0].m], [1]
             for delta in deltas[1:]:
                 vl.append(delta.v_l)
@@ -448,13 +454,13 @@ class MICE:
             ells = opt_ml < ds
 
             while np.sum([vl / opt_ml * (1 - opt_ml / ds)]) > self.err_tol**2:
-                aux1 = self.err_tol**2 + 1 / \
-                    (self.datasize - 1) * np.sum(vl[ells])
+                aux1 = self.err_tol ** 2 + 1 / \
+                       (self.data_size - 1) * np.sum(vl[ells])
                 aux2 = np.sum(np.sqrt(np.multiply(vl[ells], cl[ells]))) * \
-                    self.datasize / (self.datasize - 1)
+                       self.data_size / (self.data_size - 1)
                 opt_ml[ells] = np.ceil(np.divide(vl[ells], cl[ells])**0.5
                                        * aux2 / aux1).astype('int')
-                opt_ml = np.minimum(opt_ml, self.datasize)
+                opt_ml = np.minimum(opt_ml, self.data_size)
                 ells = opt_ml < ds
         return opt_ml
 

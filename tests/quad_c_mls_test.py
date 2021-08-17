@@ -8,102 +8,38 @@ from copy import deepcopy
 sys.path.append("../mice")
 from mice import MICE, plot_mice, plot_config
 
-def bias_L2_convergence(dF, x, true_grad, iter, num_reps=1000):
-    grads = []
-    m_increase_factor = 2
-    Mls = [lvl.m for lvl in dF.deltas]
-    true_grads = [true_grad(dF.deltas[0].x_l)]
-    expected_bias = [1/m_increase_factor * (dF.deltas[0].f_delta_av - true_grad(dF.deltas[0].x_l))]
-    for delta in dF.deltas[1:]:
-        true_grads.append((true_grad(delta.x_l) - true_grad(delta.x_l1)))
-        err_l = delta.f_delta_av - \
-            (true_grad(delta.x_l) - true_grad(delta.x_l1))
-        expected_bias.append(1/m_increase_factor * err_l)
 
-    inner = []
-    for i in range(num_reps):
-        dF_ = deepcopy(dF)
-        # grads.append(dF_.evaluate(x))
-        dF_.deltas.append(dF_.create_delta(
-            x, c=2, x_l1=dF_.deltas[-1].x_l))
-        dF_.deltas[-1].update_delta(dF_, 10)
-        for delta in dF_.deltas:
-            delta.update_delta(dF_, delta.m*m_increase_factor)
-        grads.append(dF_.aggr_deltas())
-        inner.append([])
-        n_lvls = len(dF.deltas)
-        for l in range(n_lvls):
-            for j in range(l+1, n_lvls):
-                inner_lj = (dF_.deltas[l].f_delta_av - true_grads[l]) \
-                            @ (dF_.deltas[j].f_delta_av - true_grads[j])
-                inner[-1].append(inner_lj)
+def plot_mls(Mls, ells, B):
+    k = len(Mls)
+    samps = np.zeros((k, ells))
+    for l, ml in enumerate(Mls):
+        samps[l, :(l+1)] = ml
 
-    bias = np.mean(grads, axis=0) - true_grad(x)
-
-
-
-def bias_test(dF, x, true_grad, iter, num_reps=1000000):
-    grads = []
-    Mls = [lvl.m for lvl in dF.deltas]
-    for i in range(num_reps):
-        dF_ = deepcopy(dF)
-        # grads.append(dF_.evaluate(x))
-        dF_.deltas.append(dF_.create_delta(
-            x, c=2, x_l1=dF_.deltas[-1].x_l))
-        dF_.deltas[-1].update_delta(dF_, 10)
-        for delta in dF_.deltas:
-            delta.update_delta(dF_, delta.m*2)
-        grads.append(dF_.aggr_deltas())
-    bias = np.mean(grads, axis=0) - true_grad(x)
-    Mls_ = [lvl.m for lvl in dF_.deltas[:-1]]
-    expected_bias = [Mls[0]/Mls_[0] *
-                     (dF.deltas[0].f_delta_av - true_grad(dF.deltas[0].x_l))]
-    for m_p, m_k, delta in zip(Mls[1:], Mls_[1:], dF.deltas[1:]):
-        err_l = delta.f_delta_av - \
-            (true_grad(delta.x_l) - true_grad(delta.x_l1))
-        expected_bias.append(m_p/m_k * err_l)
-
-    bias_rep = np.cumsum(grads, axis=0)/np.arange(1, num_reps+1)[:, np.newaxis] - true_grad(x)
-
-
-    exp_bias = np.sum(expected_bias, axis=0)
-
-    error = np.abs(bias_rep - exp_bias)
-
-
-    fig, axs = plt.subplots(2, 1, figsize=(5, 5), sharex=True)
-    axs[0].loglog(error[:, 0], label='Absolute error convergence')
-    axs[0].loglog(np.abs(bias_rep[:, 0]), label='Empirical bias')
-    axs[0].axhline(np.abs(exp_bias[0]), ls='--', c='k', label='Expected bias')
-    axs[0].legend()
-    axs[0].set_ylabel(r'$\nabla F_0$')
-    axs[0].grid()
-    axs[0].set_title(
-        f'Iteration: {iter}, length of hierarchy: {len(dF_.deltas)}')
-
-    axs[1].loglog(error[:, 1], label='Absolute error convergence')
-    axs[1].loglog(np.abs(bias_rep[:, 1]), label='Empirical bias')
-    axs[1].axhline(np.abs(exp_bias[1]), ls='--', c='k', label='Expected bias')
-    axs[1].set_ylabel(r'$\nabla F_1$')
-    axs[1].set_xlabel('Repetitions')
-    axs[1].grid()
-    fig.tight_layout()
-    fig.savefig(f'bias_conv_{iter}.pdf')
-
-    error = np.linalg.norm(bias_rep - exp_bias, axis=1)
-
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.loglog(error, label=r'Error norm')
-    ax.set_ylabel('Error')
-    ax.set_xlabel('Repetitions')
-    ax.grid()
-    ax.set_title(f'Iteration: {iter}, length of hierarchy: {len(dF_.deltas)}')
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for l in range(ells):
+        ax.semilogy(samps[:, l], label=fr'$M_{{{l}, k}}$')
     ax.legend()
+    ax.grid()
+    ax.set_xlabel(r'$k$')
+    ax.set_ylabel(r'$M_{\ell, k}$')
     fig.tight_layout()
-    fig.savefig(f'bias_norm_conv_{iter}.pdf')
+    fig.savefig('Ms.pdf')
 
 
-def sgd_mice(eps_rel=1., kappa=100):
+    ratios = samps[:-1, :] / samps[1:, :]
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.axhline(B, ls='--', c='k', label='B')
+    for l in range(ells):
+        ax.semilogy(ratios[:, l], label=fr'$M_{{{l}, k-1}} / M_{{{l}, k}}$')
+    ax.legend()
+    ax.grid()
+    ax.set_xlabel(r'$k$')
+    ax.set_ylabel(r'$M_{\ell, k-1} / M_{\ell, k}$')
+    fig.tight_layout()
+    fig.savefig('Ms_ratio.pdf')
+
+
+def sgd_mice(eps_rel=.5, kappa=100):
     directory = 'tests/QuadC'
     name = f'SGD_MICE'
     if not os.path.exists(directory):
@@ -153,7 +89,7 @@ def sgd_mice(eps_rel=1., kappa=100):
     dF = MICE(dobjf,
               sampler=sampler,
               eps=eps_rel,
-              max_cost=1e7,
+              max_cost=1e8,
               m_min=5,
               restart=False,
               dropping=False,
@@ -162,16 +98,16 @@ def sgd_mice(eps_rel=1., kappa=100):
     chain_size = []
     grad = []
 
-    n_iter = 21
-    X = [np.array([2., 5.])]
-    test_iters = [4, 5, 10, 20, 49, 100, 500]
+    n_iter = 100
+    X = [optimum + [1e-1, 1e-1]]
     k = 0
+
+    Mls = []
+
     while (not dF.force_exit) and k < n_iter:
         k += 1
-        if k in test_iters:
-            # bias_L2_convergence(dF, X[-1], Edobjf, k)
-            bias_test(dF, X[-1], Edobjf, k)
         grad.append(dF.evaluate(X[-1]))
+        Mls.append(dF.sample_sizes[:10])
         if dF.force_exit:
             break
         stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
@@ -184,6 +120,8 @@ def sgd_mice(eps_rel=1., kappa=100):
     print(dF.aggr_cost)
     Fs = [Eobjf(x) - f_opt for x in X]
     chain_size.append(len(dF.deltas))
+
+    plot_mls(Mls, 10, (((L-mu)/(L+mu) + eps_rel**2)/(1+eps_rel**2))**2)
 
     log = dF.log
     log['x'] = X
