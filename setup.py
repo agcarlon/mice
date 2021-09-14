@@ -9,7 +9,7 @@ with open('README.rst') as f:
 with open('LICENSE') as f:
     license = f.read()
 
-with open('REQUIREMENTS') as f:
+with open('requirements.txt') as f:
     requirements = f.read()
 
 

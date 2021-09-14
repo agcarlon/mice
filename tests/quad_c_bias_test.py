@@ -164,7 +164,7 @@ def sgd_mice(eps_rel=1., kappa=100):
 
     n_iter = 21
     X = [np.array([2., 5.])]
-    test_iters = [4, 5, 10, 20, 49, 100, 500]
+    test_iters = [2, 3, 4, 5, 10, 20, 49, 100, 500]
     k = 0
     while (not dF.force_exit) and k < n_iter:
         k += 1

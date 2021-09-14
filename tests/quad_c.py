@@ -1,4 +1,3 @@
-import sys
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -66,14 +65,15 @@ def sgd_mice(eps_rel=1., kappa=100):
     X = [np.array([20., 50.])]
 
     k = 0
+    stepsize = 1 / L
+    # stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
     while (not dF.force_exit) and k < n_iter:
         k += 1
         grad.append(dF.evaluate(X[-1]))
         if dF.force_exit:
             break
-        stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
         X.append(X[-1] - stepsize * grad[-1])
-        print(f'k: {k}, {dF.log[-1][0]}, Vl: {dF.log[-1][0]}, X: {X[-1]}, '
+        print(f'k: {k}, {dF.log[-1][0]}, Vl: {dF.log[-1][2]}, X: {X[-1]}, '
               f'grad: {grad[-1]}, '
               f'#grad: {dF.counter}, '
               f'eps.: {dF.eps}')
@@ -106,6 +106,10 @@ def sgd_mice(eps_rel=1., kappa=100):
     mc_conv_norm = [1e-1, 1e-1 * 10**-.5]
     mc_conv_norm2 = [1e-1, 1e-1 * 10**-1]
 
+    rate = (1 - stepsize*mu*(1 - 2*eps_rel**2))
+    iter_conv = [int(len(log)*.9), len(log)]
+    iter_conv_loss = [1e-2, 1e-2 * rate**(iter_conv[1] - iter_conv[0])]
+
     assympt = log['num_grads'] > 1e5
     assympt[len(assympt) - 1] = False
     P = np.polyfit(np.log(log['num_grads'][assympt]),
@@ -121,6 +125,9 @@ def sgd_mice(eps_rel=1., kappa=100):
     print(P)
     print(Fs[-1])
 
+    P = np.polyfit(log.iteration, np.log(log['opt_gap']), 1)
+
+    P2 = np.polyfit(log.iteration, 2*np.log(log['dist_to_opt']), 1)
     plot_config()
     fig, axs = plt.subplots(3, 1, figsize=(8, 8))
     axs[0] = plot_mice(log, axs[0], x='num_grads', y='opt_gap', legend=False)
@@ -148,6 +155,8 @@ def sgd_mice(eps_rel=1., kappa=100):
     axs[0] = plot_mice(log, axs[0], x='iteration', y='opt_gap',
                        style='semilogy')
     axs[0].set_ylabel(r'$F(\boldsymbol{\xi}_k) - F(\boldsymbol{\xi}^*)$')
+    # axs[0].plot(iter_conv, iter_conv_loss, 'k--', label=r'$B^k$')
+    axs[0].legend()
     axs[1] = plot_mice(log, axs[1], x='iteration', y='dist_to_opt',
                        legend=False, style='semilogy')
     axs[1].set_ylabel(
@@ -184,7 +193,8 @@ def sgd_mice(eps_rel=1., kappa=100):
     axs[2] = plot_mice(log, axs[2], x='iteration', y='rel_error',
                        style='semilogy', legend=False)
     axs[2].set_ylabel(
-        r'$\|\nabla_{\boldsymbol{\xi}} \mathcal{F}_k - \nabla_{\boldsymbol{\xi}} F_k\| / \|\nabla_{\boldsymbol{\xi}} F_k\|$')
+        r'$\|\nabla_{\boldsymbol{\xi}} \mathcal{F}_k - \nabla_{\boldsymbol{'
+        r'\xi}} F_k\| / \|\nabla_{\boldsymbol{\xi}} F_k\|$')
     axs[2].set_xlabel(r'iteration')
     axs[2].plot(np.full(len(log), eps_rel), 'k--')
     axs[2].text(30, eps_rel * 1.06, r'$\epsilon$',
@@ -192,6 +202,25 @@ def sgd_mice(eps_rel=1., kappa=100):
     plt.tight_layout()
     plt.savefig(name + '_vl_num_grads_err.pdf')
 
+    fig, axs = plt.subplots(2, 1, figsize=(8, 8))
+    axs[0] = plot_mice(log, axs[0], x='iteration', y='bias_rel_err',
+                       style='semilogy', legend=True)
+    axs[0].set_ylabel(r'$\|\mathcal{B}_k\| / \|\mathcal{F}_k\|$')
+    axs[0].plot(np.full(len(log), eps_rel), 'k--')
+    axs[0].text(30, eps_rel * 1.06, r'$\epsilon$',
+                verticalalignment='baseline')
+    axs[1] = plot_mice(log, axs[1], x='iteration', y='rel_error',
+                       style='semilogy', legend=False)
+    axs[1].set_ylabel(
+        r'$\|\nabla_{\boldsymbol{\xi}} \mathcal{F}_k - \nabla_{\boldsymbol{'
+        r'\xi}} F_k\| / \|\nabla_{\boldsymbol{\xi}} F_k\|$')
+    axs[1].set_xlabel(r'iteration')
+    axs[1].plot(np.full(len(log), eps_rel), 'k--')
+    axs[1].text(30, eps_rel * 1.06, r'$\epsilon$',
+                verticalalignment='baseline')
+    plt.tight_layout()
+    plt.savefig(name + '_errors.pdf')
+
 
 if __name__ == '__main__':
-    sgd_mice()
+    sgd_mice(eps_rel=.5)
