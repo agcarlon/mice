@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .deltas import Delta, LightDelta, DeltaResampling
+from .deltas import Delta, LightDelta, DeltaResampling, DeltaBayHess
 from .plot_config import plot_config
 from functools import partial
 from copy import deepcopy
@@ -27,9 +27,9 @@ class MICE:
         'full' : Checks, for each level l, if clipping at l is advantageous
         'all' : (only for the finite case) Clips only when sample_size equals
             the total data size
-    m_min : int, optional
+    min_batch : int, optional
         Minimum sample_size
-    rest_m_factor : int, optional
+    restart_factor : int, optional
         Increase factor for when restarting
     max_cost : float, optional
         Maximum number of gradient evaluations before halting execution
@@ -70,8 +70,8 @@ class MICE:
                  dropping=True,
                  restart=True,
                  clip_type='full',
-                 m_min=10,
-                 rest_m_factor=10,
+                 min_batch=10,
+                 restart_factor=10,
                  max_cost=1000,
                  drop_param=0.5,
                  restart_param=0,
@@ -88,8 +88,8 @@ class MICE:
         self.grad = partial(self.check_grad, func=grad)
         self.sampler = sampler
         self.eps = eps
-        self.m_min = m_min
-        self.m_restart_min = rest_m_factor * m_min
+        self.m_min = min_batch
+        self.m_restart_min = restart_factor * min_batch
         self.max_cost = max_cost
         self.dropping = dropping
         self.drop_param = drop_param
@@ -133,7 +133,10 @@ class MICE:
             self.delta_class = LightDelta
         elif self.mice_type == 'resampling':
             self.delta_class = partial(DeltaResampling, re_part=re_part,
-                                       m_min=m_min)
+                                       m_min=min_batch)
+        elif self.mice_type == 'bayesian hessian':
+            self.delta_class = partial(DeltaBayHess, re_part=re_part,
+                                       m_min=min_batch)
         if self.mice_type in ['resampling', 'bayesian hessian']:
             self.resamples = 0
             self.err_tol = 1e-6
@@ -526,7 +529,7 @@ def plot_mice(data,
     restarts = data[data['event'] == 'restart']
     end = data[data['event'] == 'end']
 
-    plot_config()
+    # plot_config()
 
     drop = dropped.size > 0
     plot_style = {
@@ -540,10 +543,10 @@ def plot_mice(data,
     plots += [plot_func(data[x], data[y], color=color)]
     if markers:
         plots += [plot_func(start[x], start[y], 'bs', ms=5, label='Start')]
-        plots += [plot_func(mices[x], mices[y], 'go', ms=3, label='MICE')]
         if drop:
             plots += [plot_func(dropped[x], dropped[y],
                                 'kx', ms=3, label='Dropped')]
+        plots += [plot_func(mices[x], mices[y], 'go', ms=5, label='MICE')]
         plots += [plot_func(restarts[x], restarts[y],
                             'rs', ms=5, label='Restart')]
         plots += [plot_func(end[x], end[y], 's',

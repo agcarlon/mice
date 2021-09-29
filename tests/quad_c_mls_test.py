@@ -90,7 +90,7 @@ def sgd_mice(eps_rel=.5, kappa=100):
               sampler=sampler,
               eps=eps_rel,
               max_cost=1e8,
-              m_min=5,
+              min_batch=5,
               restart=False,
               dropping=False,
               verbose=False)

@@ -51,7 +51,7 @@ class Delta:
     def restart(self, mice):
         new_delta = mice.create_delta(self.x_l, c=1)
         # new_delta = deepcopy(self)
-        new_delta.x_l1 = []
+        new_delta.x_l1 = None
         new_delta.f_delta = new_delta.f_l
         new_delta.f_delta_av = mice.aggr(new_delta.f_delta)
         new_delta.v_l = self.v_batch
@@ -122,7 +122,7 @@ class LightDelta:
     def restart(self, mice):
         new_delta = mice.create_delta(self.x_l, c=1)
         # new_delta = deepcopy(self)
-        new_delta.x_l1 = []
+        new_delta.x_l1 = None
         new_delta.f_l = self.f_l
         new_delta.f_delta_av = self.f_l
         new_delta.v_l = self.v_batch
@@ -353,7 +353,7 @@ class DeltaBayHess:
     def restart(self, mice):
         new_delta = mice.create_delta(self.x_l, c=1)
         # new_delta = deepcopy(self)
-        new_delta.x_l1 = []
+        new_delta.x_l1 = None
         new_delta.f_delta_av = self.f_l
         new_delta.f_deltas = self.f_ls
         new_delta.f_l = new_delta.f_delta_av
@@ -364,7 +364,7 @@ class DeltaBayHess:
         new_delta.m2_l = self.m2_l
         new_delta.m2_del = self.m2_l
         new_delta.m = self.m
-        new_delta.m_min = mice.m_rest_min
+        new_delta.m_min = mice.m_restart_min
         new_delta.c = 1
         new_delta.sampler = self.sampler
         return new_delta

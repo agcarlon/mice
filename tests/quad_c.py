@@ -56,7 +56,7 @@ def sgd_mice(eps_rel=1., kappa=100):
               sampler=sampler,
               eps=eps_rel,
               max_cost=1e7,
-              m_min=5)
+              min_batch=5)
 
     chain_size = []
     grad = []
