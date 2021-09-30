@@ -15,7 +15,7 @@ with open('REQUIREMENTS') as f:
 
 setup(
     name='mice',
-    version='0.1.0',
+    version='0.1.1',
     description='Multi-iteration Stochastic Estimator',
     long_description_content_type="text/markdown",
     long_description=readme,
