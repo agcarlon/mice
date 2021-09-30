@@ -167,12 +167,12 @@ def sgd_mice(dataset,
     k = 0
     step_size = 2/(L+Lambda)*(1/(1+df.eps**2))
     coss_bias = []
-    while not df.force_exit:
+    while not df.terminate:
         k += 1
         grad = df.evaluate(W[-1])
         bias = get_bias(df, lossgrad_full)
         coss_bias.append(cos_angle(np.sum(bias, axis=0), W[-1] - opt_W))
-        if df.force_exit:
+        if df.terminate:
             break
         W.append(W[-1] - step_size*grad)
         # W.append(W[-1] - 1/L*grad)

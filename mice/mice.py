@@ -30,7 +30,7 @@ class MICE:
     min_batch : int, optional
         Minimum sample_size
     restart_factor : int, optional
-        Increase factor for when restarting
+        Increase factor of sample sizes for restarting
     max_cost : float, optional
         Maximum number of gradient evaluations before halting execution
     drop_param : float, optional
@@ -124,7 +124,7 @@ class MICE:
         self.aggregations = 0
         self.aggr_cost = 0
         self.adpt = adpt
-        self.force_exit = False
+        self.terminate = False
         self.force_restart = False
         self.mice_type = mice_type
         if self.mice_type == 'naive':
@@ -182,6 +182,7 @@ class MICE:
         else:
             raise AttributeError(f"'{type(self).__name__}' object has no "
                                  f"attribute '{item}'")
+    plot_config()
 
     def check_grad(self, x, thetas, func):
         t0 = time()
@@ -247,7 +248,8 @@ class MICE:
         f_estim = self.aggr_deltas()
         bias_rel_err = np.sqrt(bias) / self.norm(f_estim)
         # print(f'{bias=}, {bias_rel_err=}')
-        self.log[-1] += [self.counter, self.deltas[-1].v_l, bias_rel_err]
+        self.log[-1] += [self.counter, self.deltas[-1].v_l, bias_rel_err,
+                         self.norm(f_estim)]
         self.times['mice'] += time() - t0
         self.k += 1
         return f_estim
@@ -365,10 +367,12 @@ class MICE:
 
     def check_max_cost(self, extra_eval=0):
         if self.counter + extra_eval > self.max_cost:
-            self.force_exit = True
-            self.log[-1] = ['end', self.counter, None]
+            self.terminate = True
+            self.log[-1] = ['end', self.counter, None, None, None]
             self.log = pd.DataFrame(self.log, columns=['event', 'num_grads',
-                                                       'vl', 'bias_rel_err'])
+                                                       'vl', 'bias_rel_err',
+                                                       'grad_norm'])
+            self.log['iteration'] = self.log.index + 1
             return True
         else:
             return False
@@ -528,8 +532,6 @@ def plot_mice(data,
     dropped = data[data['event'] == 'dropped']
     restarts = data[data['event'] == 'restart']
     end = data[data['event'] == 'end']
-
-    # plot_config()
 
     drop = dropped.size > 0
     plot_style = {

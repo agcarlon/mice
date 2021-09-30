@@ -104,11 +104,11 @@ def sgd_mice(eps_rel=.5, kappa=100):
 
     Mls = []
 
-    while (not dF.force_exit) and k < n_iter:
+    while (not dF.terminate) and k < n_iter:
         k += 1
         grad.append(dF.evaluate(X[-1]))
         Mls.append(dF.sample_sizes[:10])
-        if dF.force_exit:
+        if dF.terminate:
             break
         stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
         X.append(X[-1] - stepsize * grad[-1])

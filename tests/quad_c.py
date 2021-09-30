@@ -32,8 +32,8 @@ def sgd_mice(eps_rel=1., kappa=100):
         H = H0 * (1 - theta) + H1 * theta
         return .5 * (x @ H @ x) - b @ x
 
-    def dobjf(x, theta):
-        grad = np.outer(x, (1 - theta)).T + np.outer((x @ H1), theta).T - b
+    def dobjf(x, thetas):
+        grad = np.outer(x, (1 - thetas)).T + np.outer((x @ H1), thetas).T - b
         return grad
 
     def Eobjf(x):
@@ -67,10 +67,10 @@ def sgd_mice(eps_rel=1., kappa=100):
     k = 0
     stepsize = 1 / L
     # stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
-    while (not dF.force_exit) and k < n_iter:
+    while (not dF.terminate) and k < n_iter:
         k += 1
         grad.append(dF.evaluate(X[-1]))
-        if dF.force_exit:
+        if dF.terminate:
             break
         X.append(X[-1] - stepsize * grad[-1])
         print(f'k: {k}, {dF.log[-1][0]}, Vl: {dF.log[-1][2]}, X: {X[-1]}, '

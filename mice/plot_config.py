@@ -3,12 +3,12 @@ import matplotlib
 
 
 def plot_config():
-    matplotlib.rcParams['text.usetex'] = True
-    matplotlib.rcParams['text.latex.preamble'] = [
-        r'\usepackage{amsfonts}'
-        r'\usepackage{amsthm}'
-        r'\usepackage{amsmath}'
-        r'\usepackage{amssymb}'][0]
+    # matplotlib.rcParams['text.usetex'] = True
+    # matplotlib.rcParams['text.latex.preamble'] = [
+    #     r'\usepackage{amsfonts}'
+    #     r'\usepackage{amsthm}'
+    #     r'\usepackage{amsmath}'
+    #     r'\usepackage{amssymb}'][0]
     matplotlib.rcParams['font.family'] = 'serif'
     matplotlib.rcParams['font.serif'] = 'Computer Modern'
     matplotlib.rcParams['xtick.labelsize'] = 12

@@ -166,13 +166,13 @@ def sgd_mice(eps_rel=1., kappa=100):
     X = [np.array([2., 5.])]
     test_iters = [2, 3, 4, 5, 10, 20, 49, 100, 500]
     k = 0
-    while (not dF.force_exit) and k < n_iter:
+    while (not dF.terminate) and k < n_iter:
         k += 1
         if k in test_iters:
             # bias_L2_convergence(dF, X[-1], Edobjf, k)
             bias_test(dF, X[-1], Edobjf, k)
         grad.append(dF.evaluate(X[-1]))
-        if dF.force_exit:
+        if dF.terminate:
             break
         stepsize = 2.0 / (mu + L) / (1 + dF.eps**2)
         X.append(X[-1] - stepsize * grad[-1])
