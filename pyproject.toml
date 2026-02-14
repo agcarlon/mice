@@ -1,6 +1,65 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "mice"
+version = "1.0.0"
+description = "Multi-Iteration stochastiC Estimator for gradient-based stochastic optimization"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "André Carlon", email = "agcarlon@gmail.com"},
+    {name = "Luis Espath"},
+    {name = "Rafael Holdorf"},
+    {name = "Raúl Tempone"}
+]
+keywords = [
+    "stochastic optimization",
+    "variance reduction",
+    "control variates",
+    "machine learning",
+    "Monte Carlo",
+    "hierarchical methods"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "numpy>=1.19",
+    "scipy>=1.5",
+    "pandas>=1.1",
+    "matplotlib>=3.2",
+]
+
+[project.optional-dependencies]
+experiments = [
+    "joblib>=1.0",
+]
+dev = [
+    "pytest>=6.0",
+    "black>=22.0",
+    "mypy>=0.900",
+]
+
+[project.urls]
+Homepage = "https://github.com/agcarlon/mice"
+Documentation = "https://mice.readthedocs.io"
+Repository = "https://github.com/agcarlon/mice"
+Manuscript = "https://arxiv.org/abs/2011.01718"
+
+[tool.setuptools]
+packages = ["mice"]

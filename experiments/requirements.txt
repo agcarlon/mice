@@ -1,0 +1,8 @@
+# Requirements for running experiments
+# Install the mice package first: pip install -e ..
+
+numpy>=1.19
+scipy>=1.5
+pandas>=1.1
+matplotlib>=3.2
+joblib>=1.0
