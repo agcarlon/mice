@@ -18,34 +18,31 @@ def plot_mice(data,
               legend=True,
               color='C0'):
     """
-    Function devised to make plots for MICE.
+    Plot MICE logs on the given Matplotlib axes.
 
     Parameters
     ----------
-    data : Panda's DataFrame
-        Dataframe containing the optimization data to be plotted, most likely
-        the 'df.log_list' DataFrame generated after MICE reaches the termination
-        point.
-    ax : matplotlib's Axes object
-        Axes object in which to plot the desired quantities.
-    x : string
-        Which column of 'data' to be used on the 'x' axis.
-    y : string
-        Which column of 'data' to be used on the 'y' axies.
+    data : pandas.DataFrame
+        DataFrame containing optimization log data, including event markers.
+    ax : matplotlib.axes.Axes
+        Axes object where the data will be plotted.
+    x : str
+        Column name used for the x-axis.
+    y : str
+        Column name used for the y-axis.
     style : {'loglog', 'semilogy', 'semilogx', 'plot'}
-        This arguments defines which axes will have a log scale.
+        Plot style controlling linear/log scaling of axes.
     markers : bool
-        If True, adds markers on plot for MICE, dropped, restart, start, and
-        end iterations.
+        If True, adds event markers (start, add, dropped, restart, end).
     legend : bool
-        If True, adds legend to ax.
-    color : string
-        Color argument to be passed on to matplotlib.
+        If True, adds a legend.
+    color : str
+        Line color passed to Matplotlib.
 
     Returns
     -------
-    ax : matplotlib's Axes object
-        Returns Axes object with the plot.
+    matplotlib.axes.Axes
+        The updated axes.
     """
     start = data[data['event'] == 'start']
     adds = data[data['event'] == 'add']

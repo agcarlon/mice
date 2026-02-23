@@ -18,9 +18,11 @@ GradFn = Callable[[np.ndarray, Any], np.ndarray]
 @dataclass
 class MICE:
     """
-    Implementation of the MICE estimator.
+    Multi-Iteration stochastiC Estimator for stochastic gradients.
 
-    NOTE: This file holds the single source of truth for MICE.
+    This class maintains a hierarchy of control variates and adaptively allocates
+    samples across levels to satisfy an error tolerance while reducing gradient
+    evaluation cost.
     """
 
     grad: GradFn
@@ -42,7 +44,7 @@ class MICE:
     # Resampling controls
     re_part: int = 5
     re_quantile: float = 0.05
-    # Match v1/paper defaults & semantics
+    # Default resampling controls used by the current implementation.
     re_tot_cost: float = 0.2
     re_min_n: int = 5
     re_max_samp: int = 1000
@@ -69,8 +71,7 @@ class MICE:
         if self.finite:
             self.m_restart_min = int(min(self.m_restart_min, self.data_size))
 
-        # TODO this lext lines look awkward: make it as 
-        # if self.use_resampling: self.norm_estimator = ... else self.norm_estimator = PlainNormEstimator...
+        # Select the norm estimator according to the resampling setting.
         self.norm_estimator = (
             ResamplingNormEstimator(
                 re_part=self.re_part,
@@ -101,7 +102,9 @@ class MICE:
     # --- Public API ---
     def evaluate(self, x: np.ndarray) -> np.ndarray:
         """
-        Evaluate MICE at x, updating internal hierarchy.
+        Evaluate a MICE gradient estimate at ``x`` and update internal state.
+
+        Returns the aggregated gradient estimator for the current iterate.
         """
         if self.terminate:
             return np.full_like(np.asarray(x, dtype=float), np.nan)
@@ -128,7 +131,7 @@ class MICE:
         # Compute optimal sample sizes
         opt_ml = self._get_opt_ml(err_tol)
 
-        # Policy decisions (drop/restart/clip) happen before sampling-more loop in v1
+        # Policy decisions (drop/restart/clip) happen before the sampling-growth loop.
         if self.policy and len(self.levels) > 2:
             did_drop, opt_ml = self._check_dropping(opt_ml, err_tol)
             if did_drop:
@@ -154,7 +157,7 @@ class MICE:
 
         g_hat = self._g_hat if self._g_hat is not None else self._aggregate_recompute()
 
-        # Stop criterion (v1 style)
+        # Stop criterion check.
         self._check_stop_crit(err_tol)
         if self.terminate:
             current_event = "end"
@@ -287,14 +290,16 @@ class MICE:
             return float(self.err_tol)
         g_hat = self._g_hat if self._g_hat is not None else self._aggregate_recompute()
         n = float(self.norm_estimator.update(g_hat))
-        # v1 plain mode: err_tol = eps * ||g_hat||
+        # Plain norm mode: err_tol = eps * ||g_hat||
         self.err_tol = float(self.eps * n)
         return float(self.err_tol)
 
     def _define_tol_resampling(self) -> float:
         """
-        v1-style: err_tol = eps/(1+eps) * q_{re_quantile}( ||g_hat^{(res)}|| )
-        and store stop-quantile for the stochastic stopping rule.
+        Define tolerance from resampled gradient norms.
+
+        err_tol = eps/(1+eps) * q_{re_quantile}( ||g_hat^{(res)}|| ).
+        The stop quantile is stored for the stochastic stopping rule.
         """
         if not self.levels:
             self._norm_stop = 0.0
@@ -311,14 +316,8 @@ class MICE:
                 arr = np.tile(lvl.mean_delta[None, :], (self.re_part, 1))
             loo_means.append(arr)
 
-        # v1/paper resampling sample size:
-        #   re_samp = int(re_tot_cost * cost / (re_cost * |L|))
-        #   cost = sum(max(opt_ml(err_tol_prev) - m_prev, 0))
-        #   re_samp = min(re_samp, re_max_samp, (2*re_part)^|L|)
-        #   n = max(re_samp, re_min_n)
-        #
         # We use `self.err_tol` (previous tolerance) to estimate opt_ml,
-        # matching v1's sequencing.
+        # matching the current estimator sequencing.
         ml_prev = np.asarray([lvl.m_prev for lvl in self.levels], dtype=float)
         opt_ml_prev = self._get_opt_ml(float(self.err_tol))
         cost = float(np.maximum(opt_ml_prev - ml_prev, 0.0).sum())
@@ -336,7 +335,7 @@ class MICE:
         for j in range(L):
             g_samp += loo_means[j][choices[:, j]]
         norms = np.linalg.norm(g_samp, axis=1)
-        # Include the full estimator norm as an additional sample (matches v1 style)
+        # Include the full estimator norm as an additional sample.
         norms = np.concatenate([norms, np.asarray([float(np.linalg.norm(g_hat))])], axis=0)
 
         tol_norm, stop_norm = self.norm_estimator.update_from_norms(norms)  # type: ignore[attr-defined]
@@ -494,7 +493,7 @@ class MICE:
             self._update_g_hat(old_mean, lvl.mean_delta)
             self.counter += int(2 * m_to_sample)
 
-    # --- Policy: dropping / restart / clipping (v1-like) ---
+    # --- Policy: dropping / restart / clipping ---
     def _check_restart(self, opt_ml: np.ndarray, err_tol: float) -> Tuple[bool, np.ndarray]:
         ml = np.asarray([lvl.m for lvl in self.levels], dtype=float)
         mice_cost = float(np.maximum(0.0, np.ceil(opt_ml - ml)).sum() + self.policy.aggr_cost * len(opt_ml))

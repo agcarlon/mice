@@ -6,8 +6,8 @@ This repository publishes to PyPI using GitHub Trusted Publishing (OIDC).
 
 1. In PyPI (`mice` project), add a **Pending publisher**:
    - **Provider**: GitHub
-   - **Owner**: `<your-github-owner>`
-   - **Repository**: `mice` (or your exact repo name)
+   - **Owner**: `agcarlon`
+   - **Repository**: `mice`
    - **Workflow name**: `publish.yml`
    - **Environment name**: `pypi`
 
@@ -56,4 +56,3 @@ You can also run the workflow manually from GitHub Actions (`workflow_dispatch`)
 
 - **Version already exists**:
   Bump version in `pyproject.toml` and push a new tag.
-

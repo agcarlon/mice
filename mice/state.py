@@ -164,9 +164,9 @@ class LevelState:
     @property
     def v_batch(self) -> float:
         """
-        Matches v1's notion:
-        - base level: v_batch is variance of grad(x_0)
-        - diff level: v_batch is variance of grad(x_l) (the "top" gradient)
+        Variance proxy used in sample-size optimization:
+        - base level: variance of grad(x_0)
+        - diff level: variance of grad(x_l) (the "top" gradient)
         """
         return self.v_base
 

@@ -14,9 +14,6 @@ class FiniteSampler:
     """
     Deterministic without-replacement sampler over a finite population by cycling
     through a random starting offset.
-
-    This matches the spirit of the current v1 Sampler* classes but keeps the
-    interface minimal for MICE.
     """
 
     data: Union[np.ndarray, Sequence[Any]]
