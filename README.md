@@ -180,6 +180,14 @@ Preprint: [arXiv:2011.01718](https://arxiv.org/abs/2011.01718)
 
 Full documentation available at [mice.readthedocs.io](https://mice.readthedocs.io)
 
+Build docs locally:
+
+```bash
+python -m pip install -r docs/requirements.txt
+python -m pip install -e .
+sphinx-build -b html docs docs/_build/html
+```
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
