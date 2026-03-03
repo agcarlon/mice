@@ -130,7 +130,7 @@ def main() -> int:
     p.add_argument(
         "--kappas",
         type=str,
-        default="2, 4, 8, 16",
+        default="2, 4, 8, 16, 32, 64, 128",
         help="Comma- or space-separated kappa values.",
     )
     p.add_argument("--max-cost", type=float, default=float("inf"), help="Optional cap on gradient evaluations.")
