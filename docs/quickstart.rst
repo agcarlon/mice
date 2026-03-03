@@ -33,6 +33,9 @@ Minimal example
    x = np.array([10.0], dtype=float)
    for _ in range(100):
        g = estimator(x)
+       if estimator.terminate:
+           print(f"Terminated: {estimator.terminate_reason}")
+           break
        x = x - 0.1 * g
 
 Notes
@@ -41,4 +44,3 @@ Notes
 - ``MICE`` is imported from ``mice`` (top-level re-export).
 - The policy controls index-set operations (Add/Drop/Restart/Clip behavior).
 - ``max_cost`` bounds total gradient evaluations.
-
