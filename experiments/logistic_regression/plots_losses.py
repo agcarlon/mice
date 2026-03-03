@@ -9,6 +9,8 @@ import pandas as pd
 
 from mice import plot_mice
 
+from experiments.common.names import ManuscriptNames
+
 
 def plots_losses(dataset: str, *, base_dir: Path, out_dir: Path | None = None):
     # Use seed=0 runs by convention (mirrors v1 usage).
@@ -147,7 +149,8 @@ def plots_losses_statistics(dataset: str, seeds, *, base_dir: Path, out_dir: Pat
     fig.tight_layout()
     target_dir = out_dir if out_dir is not None else base_dir
     target_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(str(target_dir / f"relative_loss_gap_{dataset}_stat.pdf"))
+    pdf_name = ManuscriptNames(dataset).logistic_stats_pdf
+    fig.savefig(str(target_dir / pdf_name))
 
 
 def _parse_seeds(spec: str) -> np.ndarray:

@@ -21,7 +21,7 @@ Usage:
 Options:
     --quick: Run with reduced budget/runs for testing (not for paper)
     --skip-logreg: Skip time-intensive logistic regression experiments
-    --output-dir: Output directory (default: output)
+    --output-dir: Output directory (default: experiments/output)
 """
 from __future__ import annotations
 
@@ -74,14 +74,18 @@ def main():
                         help="Quick test mode (reduced budget/runs)")
     parser.add_argument("--skip-logreg", action="store_true",
                         help="Skip logistic regression experiments")
-    parser.add_argument("--output-dir", type=str, default="output",
+    default_output_dir = (Path(__file__).resolve().parent / "output")
+    parser.add_argument("--output-dir", type=str, default=str(default_output_dir),
                         help="Output directory for results")
     parser.add_argument("--logreg-seeds", type=str, default=None,
                         help="Logistic seeds: comma list (0,1,2) or inclusive range (0:99)")
     args = parser.parse_args()
-    
-    repo_root = Path(__file__).parent.parent.resolve()
-    output_dir = Path(args.output_dir)
+    py = sys.executable
+
+    # Resolve relative output paths from the repo root so that passing
+    # `--output-dir experiments/output` works as expected.
+    repo_root = Path(__file__).resolve().parent.parent
+    output_dir = Path(args.output_dir).expanduser()
     if not output_dir.is_absolute():
         output_dir = (repo_root / output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +114,7 @@ def main():
     
     # Table 2: Operator ablation
     ret = run_command(
-        ["python3", "-m", "experiments.quadratic.run_ablations",
+        [py, "-m", "experiments.quadratic.run_ablations",
          "--max-cost", str(budget), "--runs", str(runs), "--outdir", str(output_dir)],
         "Table 2: Operator ablation"
     )
@@ -119,7 +123,7 @@ def main():
     
     # Table 3: ε sensitivity
     ret = run_command(
-        ["python3", "-m", "experiments.quadratic.run_epsilon_sweep",
+        [py, "-m", "experiments.quadratic.run_epsilon_sweep",
          "--max-cost", str(budget), "--runs", str(runs), "--outdir", str(output_dir)],
         "Table 3: Epsilon sensitivity"
     )
@@ -128,7 +132,7 @@ def main():
     
     # Table 4: δ sensitivity
     ret = run_command(
-        ["python3", "-m", "experiments.quadratic.run_delta_sweep",
+        [py, "-m", "experiments.quadratic.run_delta_sweep",
          "--max-cost", str(budget), "--runs", str(runs), "--outdir", str(output_dir)],
         "Table 4: Delta sensitivity (drop & restart)"
     )
@@ -137,7 +141,7 @@ def main():
     
     # Table 5: Max |L_k| sensitivity
     ret = run_command(
-        ["python3", "-m", "experiments.quadratic.run_max_index_sweep",
+        [py, "-m", "experiments.quadratic.run_max_index_sweep",
          "--max-cost", str(budget), "--runs", str(runs), "--outdir", str(output_dir)],
         "Table 5: Max index set cardinality"
     )
@@ -148,15 +152,54 @@ def main():
     dims = "10,50,100" if args.quick else "10, 100, 1000, 10000"
     bench_runs = 5 if args.quick else 50
     ret = run_command(
-        ["python3", "-m", "experiments.quadratic.run_benchmarks",
+        [py, "-m", "experiments.quadratic.run_benchmarks",
          "--dims", dims, "--runs", str(bench_runs), "--outdir", str(output_dir)],
         "Figure 7: Runtime benchmark breakdown"
     )
     if ret != 0:
         failed_commands.append("Benchmark")
     
-    # Figure 5: κ-sweep (if script supports it)
-    # Note: May need to adapt run_kappa_sweep.py for batch generation
+    # Single-run quadratic figures (manuscript Section 6.1)
+    ret = run_command(
+        [py, "-m", "experiments.quadratic.run_single_kappa",
+         "--kappa", "100", "--seed", "1", "--resampling", "--outdir", str(output_dir)],
+        "Quadratic single run: SGD_MICE_all_per_iter/grads"
+    )
+    if ret != 0:
+        failed_commands.append("Quadratic single run (kappa_sweep)")
+
+    ret = run_command(
+        [py, "-m", "experiments.quadratic.run_sgd_a_comparison",
+         "--outdir", str(output_dir)] + (["--quick"] if args.quick else []),
+        "Quadratic: SGD-A comparison (sgd_a.pdf)"
+    )
+    if ret != 0:
+        failed_commands.append("Quadratic SGD-A comparison")
+
+    ret = run_command(
+        [py, "-m", "experiments.quadratic.run_kappa_cost_scaling",
+         "--outdir", str(output_dir)] + (["--quick"] if args.quick else []),
+        "Quadratic: kappa scaling (kappa_test_w_sgd_a.pdf)"
+    )
+    if ret != 0:
+        failed_commands.append("Quadratic kappa scaling")
+
+    ret = run_command(
+        [py, "-m", "experiments.quadratic.run_stopping_consistency",
+         "--outdir", str(output_dir)] + (["--quick"] if args.quick else []),
+        "Quadratic: stopping consistency violins"
+    )
+    if ret != 0:
+        failed_commands.append("Quadratic stopping consistency")
+
+    # Rosenbrock example (manuscript Section 6.2)
+    ret = run_command(
+        [py, "-m", "experiments.rosenbrock.run_rosenbrock_adam",
+         "--outdir", str(output_dir)] + (["--quick"] if args.quick else []),
+        "Rosenbrock: Adam vs Adam-MICE"
+    )
+    if ret != 0:
+        failed_commands.append("Rosenbrock (Adam vs Adam-MICE)")
     
     # ========== LOGISTIC REGRESSION EXPERIMENTS ==========
     if not args.skip_logreg:
@@ -168,7 +211,7 @@ def main():
             # Compute optimum first (if not exists)
             print(f"\n--- Checking optimum for {dataset} ---")
             ret = run_command(
-                ["python3", "-m", "experiments.logistic_regression.compute_optimum",
+                [py, "-m", "experiments.logistic_regression.compute_optimum",
                  "--dataset", dataset],
                 f"Compute optimum for {dataset}"
             )
@@ -184,7 +227,7 @@ def main():
             for method_name, module_name in methods:
                 for seed in seed_values:
                     ret = run_command(
-                        ["python3", "-m", module_name, "--dataset", dataset, "--seed", str(seed)],
+                        [py, "-m", module_name, "--dataset", dataset, "--seed", str(seed)],
                         f"Figure 8: {method_name} on {dataset} (seed {seed})"
                     )
                     if ret != 0:
@@ -192,12 +235,21 @@ def main():
 
             # Generate confidence-interval plots from all seeds.
             ret = run_command(
-                ["python3", "-m", "experiments.logistic_regression.plots_losses",
+                [py, "-m", "experiments.logistic_regression.plots_losses",
                  "--dataset", dataset, "--seeds", seeds_logreg, "--stats", "--outdir", str(output_dir)],
                 f"Figure 8: Statistical plot for {dataset}"
             )
             if ret != 0:
                 failed_commands.append(f"Logistic {dataset} stats plot")
+
+            # Export chain-size plot for seed 0 with manuscript filename.
+            ret = run_command(
+                [py, "-m", "experiments.logistic_regression.export_chain_size",
+                 "--dataset", dataset, "--outdir", str(output_dir)],
+                f"Logistic regression: chain size export for {dataset}"
+            )
+            if ret != 0:
+                failed_commands.append(f"Logistic {dataset} chain size export")
     
     # ========== SUMMARY ==========
     print("\n" + "="*70)
@@ -212,9 +264,19 @@ def main():
     print(f"  - quadratic_max_index_sensitivity.csv (Table 5)")
     print(f"  - overhead_by_dim.csv (Figure 7 data)")
     print(f"  - overhead_pct_vs_dim.pdf (Figure 7)")
+    print(f"  - SGD_MICE_all_per_iter.pdf (Quadratic single-run)")
+    print(f"  - SGD_MICE_all_per_grads.pdf (Quadratic single-run)")
+    print(f"  - SGD_MICE_err_vkk_chain_size.pdf (Quadratic single-run)")
+    print(f"  - sgd_a.pdf (Quadratic comparison)")
+    print(f"  - kappa_test_w_sgd_a.pdf (Kappa scaling)")
+    print(f"  - consistency_plot_violin.pdf (Stopping consistency, resampling)")
+    print(f"  - consistency_plot_violinno_resamp.pdf (Stopping consistency, no resampling)")
+    print(f"  - optimality_gap_Rosenbrock_1.pdf (Rosenbrock sigma=1e-4)")
+    print(f"  - optimality_gap_Rosenbrock_2.pdf (Rosenbrock sigma=1e-1)")
     if not args.skip_logreg:
         print(f"  - experiments/logistic_regression/<dataset>/<method>/<seed>/ (Figure 8 data)")
-        print(f"  - relative_loss_gap_<dataset>_stat.pdf (Figure 8)")
+        print(f"  - relative_loss_gap_<dataset>_stat.pdf (Figure 8 stats)")
+        print(f"  - sgd_mice_chain_size_<dataset>.pdf (Figure 8 chain size)")
     
     if failed_commands:
         print(f"\n⚠ WARNING: {len(failed_commands)} command(s) failed:")

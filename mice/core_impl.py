@@ -48,6 +48,12 @@ class MICE:
     re_tot_cost: float = 0.2
     re_min_n: int = 5
     re_max_samp: int = 1000
+    # Safety: cap per-call gradient batch materialization size to avoid OOM when
+    # theoretically-optimal sample sizes become extremely large.
+    #
+    # This caps the number of float entries in the (m, dim) arrays returned by
+    # `grad(...)` during a single sampling-growth update.
+    max_grad_batch_elems: int = 5_000_000
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng()
@@ -298,7 +304,7 @@ class MICE:
         """
         Define tolerance from resampled gradient norms.
 
-        err_tol = eps/(1+eps) * q_{re_quantile}( ||g_hat^{(res)}|| ).
+        err_tol = eps * q_{re_quantile}( ||g_hat^{(res)}|| ).
         The stop quantile is stored for the stochastic stopping rule.
         """
         if not self.levels:
@@ -340,7 +346,7 @@ class MICE:
 
         tol_norm, stop_norm = self.norm_estimator.update_from_norms(norms)  # type: ignore[attr-defined]
         self._norm_stop = float(stop_norm)
-        return float((self.eps / (1.0 + self.eps)) * tol_norm)
+        return float(self.eps * tol_norm)
 
     def _get_opt_ml(self, err_tol: float) -> np.ndarray:
         if self.finite:
@@ -471,27 +477,34 @@ class MICE:
             self.terminate_reason = "max_cost"
             return
 
-        thetas = lvl.sample_fn(int(m_to_sample))
-        if lvl.cost == 1:
-            g = self.grad(lvl.x, thetas)
-            old_mean = lvl.mean_delta.copy()
-            lvl.delta_stats.update_batch(g)
-            if lvl.delta_resamp is not None:
-                lvl.delta_resamp.update_batch(g)
-            self._update_g_hat(old_mean, lvl.mean_delta)
-            self.counter += int(m_to_sample)
-        else:
-            g_cur = self.grad(lvl.x, thetas)
-            g_prev = self.grad(lvl.x_prev, thetas)
-            old_mean = lvl.mean_delta.copy()
-            lvl.base_stats.update_batch(g_cur)
-            lvl.delta_stats.update_batch(g_cur - g_prev)
-            if lvl.base_resamp is not None:
-                lvl.base_resamp.update_batch(g_cur)
-            if lvl.delta_resamp is not None:
-                lvl.delta_resamp.update_batch(g_cur - g_prev)
-            self._update_g_hat(old_mean, lvl.mean_delta)
-            self.counter += int(2 * m_to_sample)
+        remaining = int(m_to_sample)
+        dim = int(self.dim or 1)
+        max_rows = max(1, int(self.max_grad_batch_elems // max(dim, 1)))
+
+        while remaining > 0:
+            m_chunk = int(min(remaining, max_rows))
+            thetas = lvl.sample_fn(int(m_chunk))
+            if lvl.cost == 1:
+                g = self.grad(lvl.x, thetas)
+                old_mean = lvl.mean_delta.copy()
+                lvl.delta_stats.update_batch(g)
+                if lvl.delta_resamp is not None:
+                    lvl.delta_resamp.update_batch(g)
+                self._update_g_hat(old_mean, lvl.mean_delta)
+                self.counter += int(m_chunk)
+            else:
+                g_cur = self.grad(lvl.x, thetas)
+                g_prev = self.grad(lvl.x_prev, thetas)
+                old_mean = lvl.mean_delta.copy()
+                lvl.base_stats.update_batch(g_cur)
+                lvl.delta_stats.update_batch(g_cur - g_prev)
+                if lvl.base_resamp is not None:
+                    lvl.base_resamp.update_batch(g_cur)
+                if lvl.delta_resamp is not None:
+                    lvl.delta_resamp.update_batch(g_cur - g_prev)
+                self._update_g_hat(old_mean, lvl.mean_delta)
+                self.counter += int(2 * m_chunk)
+            remaining -= m_chunk
 
     # --- Policy: dropping / restart / clipping ---
     def _check_restart(self, opt_ml: np.ndarray, err_tol: float) -> Tuple[bool, np.ndarray]:

@@ -101,15 +101,25 @@ python -m experiments.quadratic.run_benchmarks --dims "10,50,100,500,1000" --run
 
 **Output:** `overhead_pct_vs_dim.pdf`, `overhead_by_dim.csv`
 
-### Figure 5: Condition Number (κ) Sweep
+### Quadratic: Single κ Run (manuscript single-run figures)
 
-Tests scaling with condition number κ ∈ {10, 30, 100, 300, 1000}:
+Generates the single-run quadratic PDFs (including `SGD_MICE_err_vkk_chain_size.pdf`) for a chosen κ:
 
 ```bash
-python -m experiments.quadratic.run_kappa_sweep --seed 0
+python -m experiments.quadratic.run_single_kappa --kappa 100 --seed 1 --resampling
 ```
 
-**Output:** Figures showing convergence vs κ (varies by script implementation)
+**Output:** `SGD_MICE_all_per_iter.pdf`, `SGD_MICE_all_per_grads.pdf`, `SGD_MICE_err_vkk_chain_size.pdf`
+
+### Quadratic: κ Cost Scaling (with SGD-A)
+
+Sweeps κ and produces the manuscript scaling figure:
+
+```bash
+python -m experiments.quadratic.run_kappa_cost_scaling
+```
+
+**Output:** `kappa_test_w_sgd_a.pdf` (+ `kappa_cost_scaling.csv`)
 
 ## Logistic Regression Experiments
 

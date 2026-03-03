@@ -28,7 +28,7 @@ def run(
     dobjf, _objf, Eobjf, Edobjf, sampler, optimum, f_opt, L, stepsize = make_problem(kappa=kappa, seed=seed)
 
     outdir.mkdir(parents=True, exist_ok=True)
-    name = outdir / "SGD_MICE"
+    stem = outdir / "SGD_MICE"
 
     dF = MICE(
         grad=dobjf,
@@ -101,7 +101,7 @@ def run(
     log["rel_bias"] = log["bias"] / np.maximum(log["grad_norm"], 1e-300)
     log["rel_stat_err"] = log["stat_err"] / np.maximum(log["grad_norm"], 1e-300)
 
-    log.to_pickle(str(name))
+    log.to_pickle(str(stem) + ".pkl")
 
     # --- Plots (ported from `mice_numerics/quad_c.py`) ---
     mc_conv_grads = [1e6, 1e8]
@@ -130,7 +130,7 @@ def run(
     axs[3].set_xlabel(r"$\mathcal{C}_k$")
 
     plt.tight_layout()
-    plt.savefig(str(name) + "_all_per_grads.pdf")
+    plt.savefig(str(stem) + "_all_per_grads.pdf")
     plt.close(fig)
 
     # per iteration
@@ -148,7 +148,7 @@ def run(
     axs[2].set_xlabel("Iteration")
 
     plt.tight_layout()
-    plt.savefig(str(name) + "_all_per_iter.pdf")
+    plt.savefig(str(stem) + "_all_per_iter.pdf")
     plt.close(fig)
 
     # chain size plot
@@ -163,7 +163,81 @@ def run(
     ax.set_xlabel("Iteration")
     ax.set_ylabel(r"$|\mathcal{L}_k|$")
     fig.tight_layout()
-    plt.savefig(str(name) + "_chain_size.pdf")
+    plt.savefig(str(stem) + "_chain_size.pdf")
+    plt.close(fig)
+
+    # --- Manuscript figure: error/vkk/chain size (single run) ---
+    # The manuscript uses the same run data as the per-iter/per-grads plots above.
+    # We follow the caption order: |L_k|, true squared relative error, empirical rel. error (bias/stat),
+    # and V_{k,k} vs iteration.
+    fig, axs = plt.subplots(4, 1, figsize=(8, 10), sharex=True)
+
+    # Trying to squeeze index set size in this plot (ported from old paper code)
+    axs[0] = plot_mice(log, axs[0], x="iteration", y="hier_length", style="plot", legend=False)
+    chain_diff = log["hier_length"].diff()
+    clip_iter = log[(chain_diff < 0) & (log["event"] != "restart")].index
+    for it in clip_iter:
+        axs[0].plot(log[it - 1 : it + 1]["iteration"], log[it - 1 : it + 1]["hier_length"], "r")
+    axs[0].plot([], [], "r", label="Clipping")
+
+    axs[0].legend(
+        bbox_to_anchor=(0.0, 1.02, 1.0, 0.2),
+        ncol=3,
+        loc="lower center",
+        mode="expand",
+    )
+    axs[0].set_ylabel(r"$| \mathcal{L}_{k} |$")
+    axs[0].set_xlim([-5, len(log) + 5])
+
+    texts = [
+        f"Add: {len(log[log['event'] == 'add'])}\n",
+        f"Drop: {len(log[log['event'] == 'dropped'])}\n",
+        f"Restart: {len(log[log['event'] == 'restart'])}\n",
+        f"Clip: {len(clip_iter)}",
+    ]
+    props = dict(boxstyle="round", facecolor="white", alpha=1.0, fill=True, edgecolor=".85")
+    axs[0].text(
+        0.87,
+        0.1,
+        "".join(texts),
+        transform=axs[0].transAxes,
+        fontsize=12,
+        verticalalignment="bottom",
+        horizontalalignment="left",
+        bbox=props,
+    )
+
+    axs[1] = plot_mice(log, axs[1], x="iteration", y="rel_error", style="semilogy", legend=False)
+    axs[1].set_ylabel(
+        r"$\|\nabla_{\boldsymbol{\xi}} \mathcal{F}_k - \nabla_{\boldsymbol{\xi}} F_k\|^2 / "
+        r"\|\nabla_{\boldsymbol{\xi}} F_k\|^2$"
+    )
+    axs[1].plot(log["iteration"], np.full(len(log), eps_rel**2), "k--")
+    x_text = float(log["iteration"].iloc[min(30, max(len(log) - 1, 0))]) if len(log) else 30.0
+    axs[1].text(x_text, (eps_rel**2) * 1.15, r"$\epsilon^2$", verticalalignment="baseline")
+    axs[1].set_ylim(top=np.maximum(axs[1].get_ylim()[1], (eps_rel**2) * 5))
+
+    # Empirical relative error shows shaded regions (bias/statistical error)
+    axs[2].fill_between(log["iteration"], 0, log["rel_bias"], color="r", alpha=0.5, label="Bias")
+    axs[2].fill_between(
+        log["iteration"],
+        log["rel_bias"],
+        log["rel_bias"] + log["rel_stat_err"],
+        color="b",
+        alpha=0.5,
+        label="Statistical Error",
+    )
+    axs[2].set_ylabel(r"$(\sum_{\ell} V_{\ell, k} / M_{\ell, k}) / \|\mathcal{F}_k\|^{2}$")
+    axs[2].plot(log["iteration"], np.full(len(log), eps_rel**2), "k--", label=r"$\epsilon^2$")
+    axs[2].set_ylim(bottom=0)
+    axs[2].legend(loc="lower right")
+
+    axs[3] = plot_mice(log, axs[3], x="iteration", y="vl", style="semilogy", legend=False)
+    axs[3].set_ylabel(r"$V_{k,k}$")
+    axs[3].set_xlabel(r"Iteration")
+
+    fig.tight_layout()
+    plt.savefig(str(outdir / "SGD_MICE_err_vkk_chain_size.pdf"))
     plt.close(fig)
 
     return log
