@@ -1,7 +1,7 @@
 # MICE Numerical Experiments
 
 This directory contains all numerical experiments from the manuscript:
-**"Multi-Iteration Stochastic Optimizers"** (AMOP-D-25-00161)
+**"Multi-Iteration Stochastic Optimizers"**
 
 ## Setup
 

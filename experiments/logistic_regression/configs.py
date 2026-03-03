@@ -1,7 +1,7 @@
 """
 Dataset-specific configurations for logistic regression experiments.
 
-These settings match the manuscript (submission_4/main.tex):
+These settings match the manuscript:
 - Table at line 2853: lambda, kappa, epochs, datasize, features
 - Line 2432: max_hierarchy_size = 100 (general case)
 - Line 2875: max_hierarchy_size = 1000 (HIGGS only, due to smaller dimensionality)

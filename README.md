@@ -169,8 +169,7 @@ If you use MICE in your research, please cite:
   title={Multi-Iteration Stochastic Optimizers},
   author={Carlon, Andr{\'e} and Espath, Luis and Holdorf, Rafael and Tempone, Ra{\'u}l},
   journal={Applied Mathematics \& Optimization},
-  year={2025},
-  note={Manuscript ID: AMOP-D-25-00161}
+  year={2025}
 }
 ```
 

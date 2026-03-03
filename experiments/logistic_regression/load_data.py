@@ -6,7 +6,7 @@ Shared data loading and Lipschitz constants for fair comparison across methods.
   compute_L_hessian() = max eigenvalue of E[H(θ)] = max eig(0.25*X'X/n + Lambda*I).
 - SAG/SAGA/SVRG/SARAH use L̂ that holds *a.s. for all data points* (per the paper):
   compute_L_hat() = 0.25*max_i ||x_i||^2 + Lambda.
-See submission_4/main.tex §logistic regression and Table step-sizes (SGD-MICE vs L̂).
+See the manuscript's logistic regression section and step-size table (SGD-MICE vs L̂).
 """
 from __future__ import annotations
 
@@ -67,4 +67,3 @@ def normalize(X):
     norms = np.linalg.norm(X, axis=1)
     X_ = np.array([x / (norm + 1e-20) for x, norm in zip(X, norms)])
     return X_
-

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Master script to generate all figures and tables from the manuscript:
-"Multi-Iteration Stochastic Optimizers" (AMOP-D-25-00161)
+"Multi-Iteration Stochastic Optimizers"
 
 This script orchestrates all numerical experiments and produces the outputs
-referenced in submission_4/main.tex.
+referenced in the manuscript.
 
 Figures & Tables generated:
 - Figure 5: κ-sweep (quadratic)
