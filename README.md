@@ -68,6 +68,9 @@ estimator = MICE(
 x = np.array([10.0])
 for iteration in range(100):
     grad_estimate = estimator(x)
+    if estimator.terminate:
+        print(f"Terminated early: {estimator.terminate_reason}")
+        break
     x = x - 0.1 * grad_estimate  # Gradient descent step
     print(f"Iteration {iteration}: x = {x[0]:.6f}")
 ```
@@ -165,11 +168,13 @@ The repository includes all numerical experiments from the manuscript "Multi-Ite
 If you use MICE in your research, please cite:
 
 ```bibtex
-@article{carlon2025mice,
+@misc{carlon2020mice,
   title={Multi-Iteration Stochastic Optimizers},
   author={Carlon, Andr{\'e} and Espath, Luis and Holdorf, Rafael and Tempone, Ra{\'u}l},
-  journal={Applied Mathematics \& Optimization},
-  year={2025}
+  year={2020},
+  eprint={2011.01718},
+  archivePrefix={arXiv},
+  primaryClass={math.OC}
 }
 ```
 

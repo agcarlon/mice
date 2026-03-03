@@ -34,7 +34,7 @@ Minimal example
    for _ in range(100):
        g = estimator(x)
        if estimator.terminate:
-           print(f"Terminated: {estimator.terminate_reason}")
+           print(f"Terminated early: {estimator.terminate_reason}")
            break
        x = x - 0.1 * g
 
